@@ -1,0 +1,109 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+
+## Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+The goal of the project is predict the manner in which they did the exercise, using the "classe" variable as outcome and any of the other variables as predictors.
+
+## Loading and cleaning data
+We read the csv files including as parameter all the possibles values for NA.
+```{r loading, eval=TRUE, cache=TRUE}
+# create the data directory
+if (!file.exists("data")) {
+    create.dir("data") 
+}
+
+# download data
+url.training <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url.testing <-  "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+downloadFile <- function(url, filename) {
+    if (!file.exists(filename)) {
+        download.file(url, filename) 
+    }
+    downloaded_data <- read.csv(file = filename, na.strings = c('NA','#DIV/0!','', ' '))
+}
+
+raw.training <- downloadFile(url.training, "./data/pml-training.csv")
+raw.testing <- downloadFile(url.testing, "./data/pml-testing.csv")
+```
+
+## Cleaning the data
+```{r dim, echo=FALSE, cache=TRUE}
+size <- dim(raw.training)
+```
+
+We can see that there are `r size[1]` observations and `r size[2]` variables in the training data. However, many columns do not contain data. We cleaned this columns for avoiding noise in the prediction. This columns are derivative variables for the other variables (average, stddev, ...). Also, we remove the first seven columns which contains the number of observation, the timestamp and the windows variables.
+
+```{r cleaning, cache=TRUE}
+clean.training <- raw.training[,-c(1:7)]
+clean.training <- clean.training[,colSums(is.na(clean.training)) == 0] 
+```
+
+```{r dim clean, echo=FALSE, cache=TRUE}
+size.clean <- dim(clean.training)
+```
+Now, we have only `r size.clean[2]` variables to perform the prediction model.
+
+## Cross-Validation
+
+We split the cleaned training data into training and cross validation sets in a 70:30 ratio in order to train the model and then verify it.
+
+```{r cross,message=FALSE, cache=TRUE}
+library(caret)
+train <- createDataPartition(y=clean.training$classe, p=0.7, list=FALSE )
+set.training <- clean.training[train,]
+set.testing <- clean.training[-train,]
+```
+
+## Modelling
+
+We select the random forest method for obtain the prediction model because it has very accurate, runs efficiently on large data bases and generates an internal unbiased estimate of the generalization error as the forest building progresses.
+
+```{r forest, cache=TRUE, message=FALSE}
+modFit <- train(classe ~ ., method="rf", data=set.training)
+modFit$finalModel
+```
+We can see that the OOB estimate of error rate is `r round(modFit$finalModel$err.rate[500,1]*100, 2)` %.
+
+## Evaluation
+We evaluate the perfomance of the model using confusionMatrix over the cross-validation set (set.testing)
+```{r evaluation, cache=TRUE}
+predictions <- predict(modFit, newdata=set.testing)
+conf.matrix <- confusionMatrix(predictions, set.testing$classe)
+conf.matrix
+```
+We can see that the accuracy of the model for the cross-validation data is `r round(100*conf.matrix$overall[1],2)` %. Therefore, the expected out of sample error is `r round(100*(1 - conf.matrix$overall[1]),2)` %.
+
+## Testing data
+Now we can evaluate the testing data and load the function provided to create the files with the answer.
+
+```{r testing, cache=TRUE}
+answers <- predict(modFit,raw.testing);
+```
+
+```{r echo=TRUE, eval=FALSE}
+# create the data directory
+if (!file.exists("results")) {
+    dir.create("results") 
+}
+
+setwd("./results")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
+
+
+
+
+
